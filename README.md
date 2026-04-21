@@ -40,7 +40,7 @@ pi.session
 ### npm
 
 ```bash
-pi install pi-phoenix
+pi install npm:pi-phoenix
 ```
 
 ### GitHub

@@ -1,12 +1,18 @@
+import stripAnsi from "strip-ansi";
+
+function stripTerminalFormatting(value: string): string {
+  return stripAnsi(value.replace(/\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g, ""));
+}
+
 export function safeStringify(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return stripTerminalFormatting(value);
   if (value === undefined) return "";
   if (value === null) return "null";
 
   try {
-    return JSON.stringify(value);
+    return stripTerminalFormatting(JSON.stringify(value));
   } catch {
-    return String(value);
+    return stripTerminalFormatting(String(value));
   }
 }
 

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename } from "node:path";
+import { execFileSync } from "node:child_process";
 import type { PhoenixConfig } from "./types.js";
 
 const DEFAULT_ENDPOINT = "http://localhost:6006";
@@ -20,43 +20,26 @@ function asInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
-function findNearestPackageName(startDir: string): string | undefined {
-  let current = startDir;
+function findGitRootName(cwd: string): string | undefined {
+  try {
+    const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
 
-  while (true) {
-    const packageJsonPath = join(current, "package.json");
-    if (existsSync(packageJsonPath)) {
-      try {
-        const parsed = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { name?: unknown };
-        if (typeof parsed.name === "string" && parsed.name.trim().length > 0) {
-          return parsed.name.trim();
-        }
-      } catch {
-        // ignore and continue upward
-      }
-    }
-
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
+    return root ? basename(root) : undefined;
+  } catch {
+    return undefined;
   }
-
-  return undefined;
 }
 
 function resolveProjectName(env: NodeJS.ProcessEnv): string {
   const explicit = env.PI_PHOENIX_PROJECT?.trim();
   if (explicit) return explicit;
 
-  const packageName = findNearestPackageName(process.cwd());
-  if (packageName) {
-    return packageName
-      .replace(/^@/, "")
-      .replace(/[\/\s]+/g, "-")
-      .replace(/[^a-z0-9._-]+/gi, "-")
-      .replace(/-+/g, "-")
-      .replace(/^[-_.]+|[-_.]+$/g, "");
-  }
+  const gitRootName = findGitRootName(process.cwd());
+  if (gitRootName) return gitRootName;
 
   return basename(process.cwd());
 }

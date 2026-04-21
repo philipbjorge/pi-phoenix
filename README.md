@@ -58,7 +58,7 @@ pi -e /home/phil/src/pi-phoenix/index.ts
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PI_PHOENIX_ENABLE` | `true` | Enable or disable tracing |
-| `PI_PHOENIX_PROJECT` | nearest `package.json` name or cwd basename | Project name shown in Phoenix |
+| `PI_PHOENIX_PROJECT` | git repo root basename or cwd basename | Project name shown in Phoenix |
 | `PHOENIX_COLLECTOR_ENDPOINT` | `http://localhost:6006` | Phoenix server URL |
 | `PHOENIX_API_KEY` | unset | API key for Phoenix Cloud |
 | `PI_PHOENIX_BATCH` | `false` | Enable batch exporting |

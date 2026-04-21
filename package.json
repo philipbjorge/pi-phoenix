@@ -7,9 +7,14 @@
   "exports": {
     ".": "./index.ts"
   },
+  "bin": {
+    "pi-phoenix-sync-openrouter": "./bin/sync-openrouter.mjs"
+  },
   "files": [
     "index.ts",
     "src",
+    "bin",
+    "assets",
     "README.md",
     "LICENSE"
   ],

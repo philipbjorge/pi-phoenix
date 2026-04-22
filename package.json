@@ -8,7 +8,7 @@
     ".": "./index.ts"
   },
   "bin": {
-    "pi-phoenix-sync-openrouter": "./bin/sync-openrouter.mjs"
+    "pi-phoenix-sync-openrouter": "bin/sync-openrouter.mjs"
   },
   "files": [
     "index.ts",

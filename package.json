@@ -1,6 +1,6 @@
 {
   "name": "pi-phoenix",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Phoenix tracing extension for pi",
   "type": "module",
   "main": "./index.ts",

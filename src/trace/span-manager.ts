@@ -10,12 +10,14 @@ import {
 } from "@arizeai/phoenix-otel";
 import {
   assistantHasToolCalls,
-  extractAssistantText,
+  normalizeAssistantOutputMessage,
   normalizeMessages,
+  normalizeSystemPrompt,
   normalizeToolInput,
   normalizeToolOutput,
 } from "../normalize.js";
-import type { PendingLlmInput, SessionState, ToolSpanState } from "../types.js";
+import { captureValue } from "../capture.js";
+import type { LlmToolSchema, PendingLlmInput, SessionState, ToolSpanState } from "../types.js";
 
 interface SpanManagerOptions {
   tracer: Tracer;
@@ -142,12 +144,33 @@ export function createSpanManager(options: SpanManagerOptions) {
       lastAssistantText = undefined;
     },
 
-    onContext(args: { messages: unknown[] }): void {
+    onContext(args: { messages: unknown[]; systemPrompt?: string; tools?: LlmToolSchema[] }): void {
+      if (!turnSpan) return;
+
       finalizeActiveLlmSpan();
       pendingLlmInputs.push({
         startedAt: Date.now(),
         messages: args.messages,
+        systemPrompt: args.systemPrompt,
+        tools: args.tools,
       });
+    },
+
+    onBeforeProviderRequest(args: {
+      payload: unknown;
+      invocationParameters?: Record<string, unknown>;
+      tools?: LlmToolSchema[];
+    }): void {
+      if (!turnSpan) return;
+
+      for (const pending of pendingLlmInputs) {
+        if (!pending.providerPayload) {
+          pending.providerPayload = captureValue(args.payload, maxAttrBytes);
+          pending.invocationParameters = args.invocationParameters;
+          pending.tools = args.tools ?? pending.tools;
+          return;
+        }
+      }
     },
 
     onMessageEnd(args: {
@@ -155,6 +178,7 @@ export function createSpanManager(options: SpanManagerOptions) {
       provider?: string;
       model?: string;
       content?: unknown;
+      rawMessage?: unknown;
       usage?: {
         input?: number;
         output?: number;
@@ -176,16 +200,21 @@ export function createSpanManager(options: SpanManagerOptions) {
       if (!turnSpan || !turnContext) return;
 
       const pending = pendingLlmInputs.shift();
-      const inputMsgs = pending ? normalizeMessages(pending.messages, maxAttrBytes) : undefined;
-      const outputText = extractAssistantText(args.content, maxAttrBytes);
-      lastAssistantText = outputText;
+      const inputMsgs = pending ? normalizeMessages(pending.messages, maxAttrBytes) : [];
+      const systemPrompt = normalizeSystemPrompt(pending?.systemPrompt, maxAttrBytes);
+      const inputMessages = systemPrompt ? [systemPrompt, ...inputMsgs] : inputMsgs;
+      const outputMessage = normalizeAssistantOutputMessage(args.content, maxAttrBytes);
+      lastAssistantText = outputMessage.content;
       const keepOpenForTools = assistantHasToolCalls(args.content);
 
       const llmAttrs = getLLMAttributes({
         provider: args.provider,
+        system: args.provider,
         modelName: args.model,
-        inputMessages: inputMsgs,
-        outputMessages: [{ role: "assistant", content: outputText }],
+        invocationParameters: pending?.invocationParameters,
+        inputMessages: inputMessages.length > 0 ? inputMessages : undefined,
+        outputMessages: [outputMessage],
+        tools: pending?.tools,
         tokenCount: args.usage
           ? {
               prompt: args.usage.input,
@@ -233,7 +262,16 @@ export function createSpanManager(options: SpanManagerOptions) {
             ...(args.usage?.upstreamInferenceCost !== undefined && {
               "openrouter.cost.upstream_inference_cost": args.usage.upstreamInferenceCost,
             }),
-            ...(args.stopReason && { "llm.stop_reason": args.stopReason }),
+            ...(pending?.providerPayload && {
+              "input.value": pending.providerPayload,
+              "input.mime_type": "application/json",
+              "pi.provider.request_payload": pending.providerPayload,
+            }),
+            ...(args.stopReason && { "llm.finish_reason": args.stopReason }),
+            ...(args.rawMessage !== undefined && {
+              "output.value": captureValue(args.rawMessage, maxAttrBytes),
+              "output.mime_type": "application/json",
+            }),
           },
           startTime: pending?.startedAt,
         },

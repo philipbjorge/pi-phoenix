@@ -14,9 +14,17 @@ export interface SessionState {
   promptCount: number;
 }
 
+export interface LlmToolSchema {
+  jsonSchema: string | Record<string, unknown>;
+}
+
 export interface PendingLlmInput {
   startedAt: number;
   messages: unknown[];
+  systemPrompt?: string;
+  tools?: LlmToolSchema[];
+  providerPayload?: string;
+  invocationParameters?: Record<string, unknown>;
 }
 
 export interface ToolSpanState {

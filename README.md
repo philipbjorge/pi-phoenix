@@ -1,6 +1,6 @@
 # pi-phoenix
 
-Phoenix tracing extension for [pi](https://github.com/mariozechner/pi-coding-agent). It sends OpenInference traces to Arize Phoenix so you can inspect pi sessions, prompts, model calls, and tool executions.
+Phoenix tracing extension for [pi](https://github.com/mariozechner/pi-coding-agent). It sends OpenInference traces to Arize Phoenix so you can inspect pi sessions, system prompts, model calls, tool schemas, provider request payloads, and tool executions.
 
 ## Why Arize?
 

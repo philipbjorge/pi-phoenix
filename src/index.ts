@@ -1,7 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { getConfig } from "./config.js";
+import { normalizeInvocationParameters, normalizeLlmTools, normalizeProviderTools } from "./normalize.js";
 import { createPhoenixRuntime, type PhoenixRuntime } from "./trace/provider.js";
 import { createSpanManager, type SpanManager } from "./trace/span-manager.js";
+
+type PiToolInfo = ReturnType<ExtensionAPI["getAllTools"]>[number];
 
 const STATUS_KEY = "pi-phoenix";
 
@@ -121,6 +124,26 @@ function extractProviderModel(
   };
 }
 
+function getActiveLlmTools(pi: ExtensionAPI) {
+  const activeToolNames = pi.getActiveTools();
+  if (activeToolNames.length === 0) return undefined;
+
+  const toolByName = new Map<string, PiToolInfo>(pi.getAllTools().map((tool) => [tool.name, tool]));
+  const activeTools = activeToolNames
+    .map((name) => toolByName.get(name))
+    .filter((tool): tool is PiToolInfo => tool !== undefined);
+
+  if (activeTools.length === 0) return undefined;
+
+  return normalizeLlmTools(
+    activeTools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    })),
+  );
+}
+
 export default function piPhoenixExtension(pi: ExtensionAPI): void {
   const config = getConfig();
 
@@ -174,9 +197,22 @@ export default function piPhoenixExtension(pi: ExtensionAPI): void {
     });
   });
 
-  pi.on("context", async (event) => {
+  pi.on("context", async (event, ctx) => {
     if (!spanManager) return;
-    spanManager.onContext({ messages: event.messages });
+    spanManager.onContext({
+      messages: event.messages,
+      systemPrompt: ctx.getSystemPrompt(),
+      tools: getActiveLlmTools(pi),
+    });
+  });
+
+  pi.on("before_provider_request", async (event) => {
+    if (!spanManager) return;
+    spanManager.onBeforeProviderRequest({
+      payload: event.payload,
+      invocationParameters: normalizeInvocationParameters(event.payload),
+      tools: normalizeProviderTools(event.payload),
+    });
   });
 
   pi.on("message_end", async (event, ctx) => {
@@ -191,6 +227,7 @@ export default function piPhoenixExtension(pi: ExtensionAPI): void {
       provider: modelInfo.provider,
       model: modelInfo.model,
       content: extractContent(event.message),
+      rawMessage: event.message,
       usage: extractUsage(event.message),
       stopReason: extractStopReason(event.message),
     });

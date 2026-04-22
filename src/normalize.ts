@@ -1,4 +1,5 @@
 import { captureValue, safeStringify } from "./capture.js";
+import type { LlmToolSchema } from "./types.js";
 
 export interface NormalizedToolCall {
   id?: string;
@@ -154,6 +155,36 @@ export function normalizeToolInput(toolName: string, input: unknown, maxBytes: n
   return captureValue(input, maxBytes);
 }
 
+export function normalizeSystemPrompt(
+  systemPrompt: string | undefined,
+  maxBytes: number,
+): { role: string; content: string } | undefined {
+  if (!systemPrompt?.trim()) return undefined;
+  return {
+    role: "system",
+    content: captureValue(systemPrompt, maxBytes),
+  };
+}
+
+export function normalizeLlmTools(
+  tools: Array<{ name: string; description?: string; parameters?: unknown }>,
+): LlmToolSchema[] {
+  return tools.map((tool) => ({
+    jsonSchema: {
+      type: "function",
+      function: {
+        name: tool.name,
+        ...(tool.description ? { description: tool.description } : {}),
+        parameters: tool.parameters ?? {
+          type: "object",
+          properties: {},
+          additionalProperties: true,
+        },
+      },
+    },
+  }));
+}
+
 export function normalizeToolOutput(result: unknown, maxBytes: number): string {
   if (!result || typeof result !== "object") {
     return captureValue(result, maxBytes);
@@ -189,4 +220,44 @@ export function assistantHasToolCalls(content: unknown): boolean {
 
 export function extractAssistantText(content: unknown, maxBytes: number): string {
   return captureValue(extractText(content), maxBytes);
+}
+
+export function normalizeAssistantOutputMessage(
+  content: unknown,
+  maxBytes: number,
+): { role: string; content: string; toolCalls?: NormalizedToolCall[] } {
+  const text = captureValue(extractText(content), maxBytes);
+  const toolCalls = extractToolCalls(content);
+  return {
+    role: "assistant",
+    content: text,
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+  };
+}
+
+export function normalizeProviderTools(payload: unknown): LlmToolSchema[] | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+
+  const value = payload as { tools?: unknown; functions?: unknown };
+  if (Array.isArray(value.tools)) {
+    return value.tools.map((tool) => ({ jsonSchema: tool as Record<string, unknown> }));
+  }
+  if (Array.isArray(value.functions)) {
+    return value.functions.map((tool) => ({ jsonSchema: tool as Record<string, unknown> }));
+  }
+  return undefined;
+}
+
+export function normalizeInvocationParameters(payload: unknown): Record<string, unknown> | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+
+  const value = payload as Record<string, unknown>;
+  const invocationParameters: Record<string, unknown> = {};
+
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "messages" || key === "input") continue;
+    invocationParameters[key] = entry;
+  }
+
+  return Object.keys(invocationParameters).length > 0 ? invocationParameters : undefined;
 }
